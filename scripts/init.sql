@@ -1,0 +1,10 @@
+CREATE ROLE myuser WITH LOGIN PASSWORD 'mypassword';
+CREATE DATABASE my_db OWNER myuser;
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE,
+    password TEXT
+);
+
+GRANT ALL PRIVILEGES ON TABLE users TO myuser;
