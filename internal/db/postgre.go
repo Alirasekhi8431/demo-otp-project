@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/sirupsen/logrus"
 	models "alirasekhi8431/demo-otp-project/models"
+	"time"
 )
 
 // To define usual CRUD on the database
@@ -23,23 +24,81 @@ func ConnectToDb(username, password, port string) {
 	}
 }
 
-func InsertUser(username, password string) {
+func InsertUser(username, password string ) {
 	checkQuery := `SELECT (username , password) FROM users WHERE username=$1`
 
 	row := conn.QueryRow(context.Background(), checkQuery, username)
 	var user models.User
-	if err := row.Scan(&user.Username, user.Password); err != nil {
+	if err := row.Scan(&user); err != nil {
 		if err == pgx.ErrNoRows {
 
 		}else {
-			logrus.Errorf("Username already exists.")
+			logrus.Errorf("Username already exists. %v" , err)
 			return
 		}
 	}
-	query := `INSERT INTO users (username , password) VALUES($1 , $2); `
-	_, err := conn.Exec(context.Background(), query, username, password)
+	query := `INSERT INTO users (username , password , registeration_date) VALUES($1 , $2,  $3); `
+	_, err := conn.Exec(context.Background(), query, username, password , time.Now())
 	if err != nil {
 		logrus.Errorf("Error inserting => %v", err)
 		return
 	}
+}
+func GetUser(username string) (models.User , error) {
+	checkQuery := `SELECT (username , password) FROM users WHERE username=$1`
+
+	row := conn.QueryRow(context.Background(), checkQuery, username)
+	var user models.User
+	if err := row.Scan(&user); err != nil {
+		
+			return models.User{} , fmt.Errorf("User does not exist.")
+
+	}
+	return user , nil
+}
+
+func GetUsersOTP(username string) ([]models.Otp, error) {
+	query := `
+		SELECT otp, created_at FROM otps 
+		WHERE username = $1 
+		AND created_at >= NOW() - INTERVAL '10 minutes'
+		ORDER BY created_at DESC;`
+
+	rows, err := conn.Query(context.Background(), query, username)
+	if err != nil {
+		logrus.Errorf("Error getting user OTPs: %v", err)
+		return nil, fmt.Errorf("error getting user OTPs")
+	}
+	defer rows.Close()
+
+	var otps []models.Otp
+	for rows.Next() {
+		var otp models.Otp
+		var createdAt time.Time
+		if err := rows.Scan(&otp.Digits, &createdAt); err != nil {
+			logrus.Errorf("Error scanning row: %v", err)
+			continue
+		}
+		otp.Username = username
+		otp.TimeStamp = createdAt
+		otps = append(otps, otp)
+	}
+
+	if err := rows.Err(); err != nil {
+		logrus.Errorf("Rows error: %v", err)
+		return nil, fmt.Errorf("error with rows")
+	}
+
+	return otps, nil
+}
+
+func InsertOTPForUser(otp models.Otp) error{
+	query := `INSERT INTO otps (username , otp ,created_at ,  phone_number ) VALUES($1 , $2, $3 ,  $4);`
+	if _ , err := conn.Exec(context.Background() , query , otp.Username , otp.Digits , otp.TimeStamp , otp.PhoneNumber); err != nil {
+		logrus.Errorf("Error inserting otp => %v" , err)
+		return err
+	}
+	return nil
+
+
 }
